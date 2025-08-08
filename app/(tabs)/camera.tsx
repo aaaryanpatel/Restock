@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Button, Image, StyleSheet, Text, View } from "react-native";
 
 // Replace with your Google Vision API key!
-const GOOGLE_CLOUD_VISION_API_KEY = "AIzaSyBTt08rcQZW8-x68XcBbq49NsjvJ3-QhKY";
+const GOOGLE_CLOUD_VISION_API_KEY = "e";
 
 export default function CameraScreen() {
   const [items, setItems] = useState<{ id: string; text: string; input: string }[]>([]);
