@@ -1,331 +1,231 @@
-// import * as ImagePicker from "expo-image-picker";
-// import { useRouter } from "expo-router";
-// import React, { useEffect, useState } from "react";
-// import { ActivityIndicator, Alert, Button, Image, StyleSheet, Text, View } from "react-native";
-
-// // Replace with your Google Vision API key!
-// const GOOGLE_CLOUD_VISION_API_KEY = "e";
-
-// export default function CameraScreen() {
-//   const [items, setItems] = useState<{ id: string; text: string; input: string }[]>([]);
-//   const [image, setImage] = useState<string | null>(null);
-//   const [loading, setLoading] = useState<boolean>(false);
-//   const router = useRouter();
-
-//   useEffect(() => {
-//     (async () => {
-//       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-//       if (status !== 'granted') {
-//         Alert.alert('Permission needed', 'Camera access is required!');
-//       }
-//     })();
-//   }, []);
-
-//   const pickImage = async () => {
-//     try {
-//       // *** Lower quality for much faster upload ***
-//       let result = await ImagePicker.launchCameraAsync({
-//         allowsEditing: true,
-//         aspect:[16,9],
-        
-//         base64: true,
-//         quality: 0.2, // reduce size for speed (try 0.1 for even faster!)
-//       });
-
-//       if (!result.canceled && result.assets && result.assets.length > 0) {
-//         setLoading(true); // Show spinner ASAP!
-//         const photo = result.assets[0];
-//         setImage(photo.uri);
-
-//         try {
-//           const body = {
-//             requests: [
-//               {
-//                 image: { content: photo.base64 },
-//                 features: [{ type: "TEXT_DETECTION" }],
-//               },
-//             ],
-//           };
-
-//           const res = await fetch(
-//             `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_CLOUD_VISION_API_KEY}`,
-//             {
-//               method: "POST",
-//               headers: { "Content-Type": "application/json" },
-//               body: JSON.stringify(body),
-//             }
-//           );
-//           const data = await res.json();
-
-//           let parsedText = "";
-//           if (
-//             data.responses &&
-//             data.responses[0] &&
-//             data.responses[0].fullTextAnnotation &&
-//             data.responses[0].fullTextAnnotation.text
-//           ) {
-//             parsedText = data.responses[0].fullTextAnnotation.text;
-//           } else if (
-//             data.responses &&
-//             data.responses[0] &&
-//             data.responses[0].textAnnotations &&
-//             data.responses[0].textAnnotations[0] &&
-//             data.responses[0].textAnnotations[0].description
-//           ) {
-//             parsedText = data.responses[0].textAnnotations[0].description;
-//           }
-
-//           if (parsedText) {
-//             setItems((prev) => [
-//               ...prev,
-//               { id: Date.now().toString(), text: parsedText.trim(), input: "" },
-//             ]);
-//           } else {
-//             Alert.alert("No text found!");
-//           }
-//         } catch (err) {
-//           Alert.alert("OCR Error", "Failed to recognize text.");
-//           console.log("OCR error:", err);
-//         }
-//         setLoading(false);
-//       }
-//     } catch (err) {
-//       Alert.alert('Error', 'Failed to launch camera');
-//       console.log('Camera error:', err);
-//     }
-//   };
-
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.title}>Restock OCR Scanner</Text>
-//       <Button title="Take Photo of Tag" onPress={pickImage} />
-//       {loading && <ActivityIndicator size="large" color="#1e90ff" style={{ marginTop: 20 }} />}
-//       {image && !loading && <Image source={{ uri: image }} style={styles.image} />}
-//       <Button
-//         title="Show List"
-//         onPress={() =>
-//           router.push({
-//             pathname: "/list",
-//             params: { items: JSON.stringify(items) }
-//           })
-//         }
-//         disabled={items.length === 0}
-//       />
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, paddingTop: 40, backgroundColor: "#fff" },
-//   title: { fontSize: 24, fontWeight: "bold", alignSelf: "center", margin: 10 },
-//   image: { width: 200, height: 200, alignSelf: "center", marginVertical: 10, borderRadius: 8 },
-// });
-
-///////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////
-
-import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, Image, ActivityIndicator, StyleSheet, SafeAreaView } from "react-native";
-import * as ImagePicker from "expo-image-picker";
+import React, { useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions, CameraType } from "expo-camera";
+import * as ImageManipulator from "expo-image-manipulator";
+import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 
-const GOOGLE_CLOUD_VISION_API_KEY = "Key"; // API-Key
+const VISION_KEY = process.env.EXPO_PUBLIC_VISION_KEY ?? "";
+
+// Optional cleaner – keep if you already use it
+function extractProductName(raw: string) {
+  const lines = (raw || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const BAD = ["retail price","unit price","per ounce","price","oz","ounce","g","kg","lb","ct","pk","barcode","upc"];
+  const MONEY = /[$€£₹]|\b\d+\.\d{2}\b/; const UPC = /\b\d{8,13}\b/;
+  const cleaned = lines
+    .filter(l => {
+      const lc = l.toLowerCase();
+      if (BAD.some(w => lc.includes(w))) return false;
+      if (MONEY.test(l)) return false;
+      if (UPC.test(l)) return false;
+      const letters = (l.match(/[a-z]/gi) || []).length;
+      const digits = (l.match(/\d/g) || []).length;
+      return letters > digits;
+    })
+    .map(l => l.replace(/\b\d+(\.\d+)?\s?(oz|ounce|ounces|g|kg|lb|lbs|ct|pk)\b/gi, "")
+               .replace(/\$?\d+(\.\d{2})?/g, "")
+               .replace(/[^a-z0-9 &\-'/]/gi, " ")
+               .replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean);
+  if (!cleaned.length) return "";
+  cleaned.sort((a,b)=> b.replace(/[^a-z]/gi,"").length - a.replace(/[^a-z]/gi,"").length);
+  return cleaned[0].replace(/\b([a-z])/g, m => m.toUpperCase());
+}
+
+type Item = { id: string; text: string; input: string };
 
 export default function CameraScreen() {
-  const [items, setItems] = useState<{ id: string; text: string; input: string }[]>([]);
-  const [image, setImage] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
   const router = useRouter();
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
+
+  const [isBusy, setBusy] = useState(false);
+  const [items, setItems] = useState<Item[]>([]);
 
   useEffect(() => {
-    (async () => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        alert("Camera permission is required.");
-      }
-    })();
-  }, []);
+    if (!permission?.granted) requestPermission();
+  }, [permission]);
 
-  const pickImage = async () => {
+  if (!permission) return null;
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.permissionTitle}>Camera permission needed</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission}>
+          <Text style={styles.primaryTxt}>Grant Permission</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const takeAndOcr = async () => {
+    if (isBusy || !cameraRef.current) return;
     try {
-      let result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [16, 9],
-        base64: true,
-        quality: 0.2,
+      setBusy(true);
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // tap feedback
+
+      // 1) Take photo quickly
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: false,
+        quality: 0.3,           // small & fast
+        skipProcessing: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setLoading(true);
-        const photo = result.assets[0];
-        setImage(photo.uri);
+      // 2) Crop to the orange frame (relative → absolute)
+      // Frame is centered, width = 86%, height = 42% of image
+      const rw = 0.86, rh = 0.42, rx = (1 - rw) / 2, ry = (1 - rh) / 2;
+      const width = photo.width ?? 0;
+      const height = photo.height ?? 0;
 
-        // OCR request
-        const body = {
-          requests: [
-            {
-              image: { content: photo.base64 },
-              features: [{ type: "TEXT_DETECTION" }],
-            },
-          ],
-        };
+      const crop = {
+        originX: Math.round(width * rx),
+        originY: Math.round(height * ry),
+        width:   Math.round(width * rw),
+        height:  Math.round(height * rh),
+      };
 
-        const res = await fetch(
-          `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_CLOUD_VISION_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          }
-        );
-        const data = await res.json();
-        let parsedText = "";
-        if (
-          data.responses &&
-          data.responses[0] &&
-          data.responses[0].fullTextAnnotation &&
-          data.responses[0].fullTextAnnotation.text
-        ) {
-          parsedText = data.responses[0].fullTextAnnotation.text;
-        } else if (
-          data.responses &&
-          data.responses[0] &&
-          data.responses[0].textAnnotations &&
-          data.responses[0].textAnnotations[0] &&
-          data.responses[0].textAnnotations[0].description
-        ) {
-          parsedText = data.responses[0].textAnnotations[0].description;
-        }
-        if (parsedText) {
-          setItems((prev) => [
-            ...prev,
-            { id: Date.now().toString(), text: parsedText.trim(), input: "" },
-          ]);
-        } else {
-          alert("No text found!");
-        }
-        setLoading(false);
+      // 3) Crop + resize + return base64 for OCR
+      const cropped = await ImageManipulator.manipulateAsync(
+        photo.uri,
+        [
+          { crop },
+          { resize: { width: 1200 } }, // smaller upload, good accuracy
+        ],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      if (!VISION_KEY) {
+        Alert.alert("Captured", "Add EXPO_PUBLIC_VISION_KEY to run OCR.");
+        setBusy(false);
+        return;
       }
-    } catch (err) {
-      alert("Failed to launch camera.");
-      setLoading(false);
+
+      // 4) OCR — TEXT_DETECTION is fastest
+      const body = {
+        requests: [{ image: { content: cropped.base64 }, features: [{ type: "TEXT_DETECTION" }] }],
+      };
+      const res = await fetch(
+        `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      );
+      const data = await res.json();
+
+      let parsed = data?.responses?.[0]?.fullTextAnnotation?.text
+        ?? data?.responses?.[0]?.textAnnotations?.[0]?.description
+        ?? "";
+
+      const nameOnly = extractProductName(parsed) || parsed.trim();
+
+      if (nameOnly) {
+        setItems(prev => [...prev, { id: Date.now().toString(), text: nameOnly, input: "" }]);
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // done buzz
+      } else {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("No text found", "Try aligning the name inside the frame.");
+      }
+    } catch (e) {
+      console.log("takeAndOcr error:", e);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Error", "Could not capture/recognize.");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-      
-      {/* HEADER */}
+    <View style={styles.container}>
+      {/* Camera background */}
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={"back" as CameraType}
+        isActive
+      />
+
+      {/* Dim + scan frame */}
+      <View pointerEvents="none" style={styles.overlay}>
+        <View style={styles.frame} />
+      </View>
+
+      {/* Header */}
       <View style={styles.header}>
-        <Feather name="box" size={30} color="#111" />
-        <Text style={styles.headerTitle}>Restock</Text>
-      </View>
-
-      {/* SEARCH / CAMERA CARD */}
-      <View style={styles.card}>
-        <Text style={styles.title}>Scan a Product Tag</Text>
-        <TouchableOpacity style={styles.cameraButton} onPress={pickImage}>
-          <Feather name="camera" size={28} color="#2563eb" />
-          <Text style={styles.cameraButtonText}>Take Photo</Text>
+        <Text style={styles.title}>Restock</Text>
+        <TouchableOpacity onPress={() => router.push("/about")} style={styles.circleBtn}>
+          <Ionicons name="help-circle-outline" size={20} color="#fff" />
         </TouchableOpacity>
-        {loading && <ActivityIndicator size="large" color="#2563eb" style={{ marginVertical: 18 }} />}
-        {image && !loading && (
-          <Image source={{ uri: image }} style={styles.previewImg} resizeMode="cover" />
-        )}
       </View>
 
-      {/* ACTIONS */}
-      <View style={styles.actions}>
+      {/* Bottom controls */}
+      <View style={styles.bottom}>
         <TouchableOpacity
-          style={[
-            styles.listButton,
-            { backgroundColor: items.length ? "#2563eb" : "#e5e7eb" },
-          ]}
-          disabled={items.length === 0}
+          style={styles.secondaryBtn}
           onPress={() => router.push({ pathname: "/list", params: { items: JSON.stringify(items) } })}
         >
-          <Feather name="list" size={22} color="#fff" />
-          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 17, marginLeft: 6 }}>Show List</Text>
+          <Ionicons name="list" size={16} color="#fff" />
+          <Text style={styles.secondaryTxt}>Show List</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.shutter} onPress={takeAndOcr} disabled={isBusy}>
+          {isBusy ? <ActivityIndicator color="#111" /> : null}
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
+/* ---------------- styles ---------------- */
+// Todo: saperate the style sheet at the end.
+/* ---------------- styles ---------------- */
+
+const ORANGE = "#ff7a00";
+
 const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#000" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" },
+  permissionTitle: { color: "#fff", fontSize: 18, marginBottom: 16 },
+  primaryBtn: { backgroundColor: "#2563eb", paddingHorizontal: 18, paddingVertical: 12, borderRadius: 10 },
+  primaryTxt: { color: "#fff", fontWeight: "600" },
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  frame: {
+    width: "86%",
+    height: "42%",
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: ORANGE,
+    backgroundColor: "rgba(0,0,0,0.12)",
+  },
+
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: 24,
-    paddingHorizontal: 20,
-    marginBottom: 8,
+    position: "absolute",
+    top: 56, left: 20, right: 20,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#111",
-    marginLeft: 9,
-    letterSpacing: 1.3,
+  title: { color: "#fff", fontSize: 22, fontWeight: "800" },
+  circleBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
   },
-  card: {
-    marginHorizontal: 18,
-    marginTop: 25,
-    backgroundColor: "#FEFEFE",
-    borderRadius: 18,
-    shadowColor: "#000",
-    shadowOpacity: 0.09,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 3 },
-    padding: 22,
-    alignItems: "center",
+
+  bottom: { position: "absolute", bottom: 40, left: 20, right: 20, alignItems: "center", gap: 16 },
+  secondaryBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 12, backgroundColor: "rgba(0,0,0,0.55)",
   },
-  title: {
-    fontSize: 20,
-    color: "#111",
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
-  cameraButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1.2,
-    borderColor: "#2563eb",
-    backgroundColor: "#fff",
-    paddingVertical: 10,
-    paddingHorizontal: 22,
-    marginBottom: 16,
-    marginTop: 10,
-  },
-  cameraButtonText: {
-    fontSize: 17,
-    color: "#2563eb",
-    fontWeight: "500",
-    marginLeft: 7,
-  },
-  previewImg: {
-    width: 210,
-    height: 120,
-    borderRadius: 12,
-    marginTop: 7,
-    marginBottom: 10,
-  },
-  actions: {
-    marginTop: 32,
-    alignItems: "center",
-  },
-  listButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    backgroundColor: "#2563eb",
-    paddingVertical: 13,
-    paddingHorizontal: 36,
-    marginBottom: 20,
+  secondaryTxt: { color: "#fff", fontSize: 14, fontWeight: "600" },
+
+  shutter: {
+    width: 73, height: 72, borderRadius: 36,
+    backgroundColor: "#fff", alignItems: "center", justifyContent: "center",
+    shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
   },
 });
-
-
-

@@ -51,7 +51,7 @@ export default function PrivacyScreen() {
         <Text style={styles.sectionTitle}>Questions?</Text>
         <Pressable onPress={handleEmailPress}>
           <Text style={[styles.text, styles.email]}>
-            restock.app.official@gmail.com
+            restock.app.official175@gmail.com
           </Text>
         </Pressable>
       </View>

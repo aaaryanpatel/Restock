@@ -1,80 +1,45 @@
-// import React, { useState } from "react";
-// import { Slot } from "expo-router";
-// import SplashScreen from "./SplashScreen"; // adjust the path if needed
 
-// export default function RootLayout() {
-//   const [showSplash, setShowSplash] = useState(true);
-
-//   if (showSplash) {
-//     return <SplashScreen onFinish={() => setShowSplash(false)} />;
-//   }
-
-//   return <Slot />;
-// }
-
-////////////.//////
-
-
-
-// app/_layout.tsx
-// import { Drawer } from 'expo-router/drawer';
-
-// export default function RootLayout() {
-//   return (
-//     <Drawer
-//       screenOptions={{
-//         drawerStyle: { width: 300 },
-//         headerShown: false, // We’ll show our own headers in each screen if needed
-//         drawerLabelStyle: { fontSize: 18 },
-//         swipeEdgeWidth: 40, // Pixels from left to trigger swipe open
-//         swipeEnabled: true, // Enable swipe to open drawer
-        
-//       }}
-//     >
-//       <Drawer.Screen name="(tabs)" options={{ drawerLabel: "Home" }} />
-//       <Drawer.Screen name="about" options={{ drawerLabel: "About" }} />
-//       <Drawer.Screen name="privacy" options={{ drawerLabel: "Privacy" }} />
-      
-//     </Drawer>
-//   );
-// }
-
-
-
-
-
-import React, { useState, useEffect } from "react";
-import { Drawer } from 'expo-router/drawer';
-import SplashScreen from "./SplashScreen"; // adjust path if needed
+import "react-native-gesture-handler"; // must be first
+import React, { useEffect, useState } from "react";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Drawer } from "expo-router/drawer";
+import SplashScreen from "./SplashScreen"; // adjust path if yours differs
 
 export default function RootLayout() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 2000);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setShowSplash(false), 2000);
+    return () => clearTimeout(t);
   }, []);
 
   if (showSplash) {
-    return <SplashScreen />;
+    return (
+      <SafeAreaProvider>
+        <SplashScreen />
+        <StatusBar style="light" />
+      </SafeAreaProvider>
+    );
   }
 
   return (
-    <Drawer
-      screenOptions={{
-        drawerStyle: { width: 300 },
-        headerShown: false,
-        drawerLabelStyle: { fontSize: 18 },
-        swipeEdgeWidth: 40,
-        swipeEnabled: true,
-      }}
-    >
-      <Drawer.Screen name="(tabs)" options={{ drawerLabel: "Home" }} />
-      <Drawer.Screen name="about" options={{ drawerLabel: "About" }} />
-      <Drawer.Screen name="privacy" options={{ drawerLabel: "Privacy" }} />
-    </Drawer>
+    <SafeAreaProvider>
+      <Drawer
+        screenOptions={{
+          headerShown: false,
+          drawerStyle: { width: 300 },
+          drawerLabelStyle: { fontSize: 18 },
+          swipeEnabled: true,
+          swipeEdgeWidth: 40,
+        }}
+      >
+        {/* Your tab navigator lives inside (tabs) */}
+        <Drawer.Screen name="(tabs)" options={{ drawerLabel: "Home" }} />
+        <Drawer.Screen name="about" options={{ drawerLabel: "About" }} />
+        <Drawer.Screen name="privacy" options={{ drawerLabel: "Privacy" }} />
+      </Drawer>
+      <StatusBar style="dark" />
+    </SafeAreaProvider>
   );
 }
-
-
-

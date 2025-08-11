@@ -8,7 +8,7 @@ export default function Index() {
     // Wait until after the first render to navigate!
     setTimeout(() => {
       router.replace("/camera");
-    }, 0);
+    }, 1);
   }, []);
 
   return null;

@@ -1,5 +1,4 @@
 {
-  
   "expo": {
     "name": "restock-ocr-app",
     "slug": "restock-ocr-app",
@@ -10,7 +9,14 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app scans product tags to create your restock list."
+      },
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sypdeydev.restockocrapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -38,8 +44,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "beda01a0-ec6e-4889-b0b9-350c1bf803f6"
+      }
     }
-    
   }
-  
 }

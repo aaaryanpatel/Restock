@@ -11,7 +11,7 @@ export default function SplashScreen({ onFinish }: { onFinish: () => void }) {
   return (
     <View style={styles.container}>
       <Feather name="box" style={styles.title} size={30} color="#111" />
-      <Text style={styles.title}>Restock</Text>
+      {/* <Text style={styles.title}>Restock</Text> */}
     </View>
   );
 }
