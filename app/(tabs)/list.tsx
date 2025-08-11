@@ -9,36 +9,33 @@ import {
   TouchableOpacity,
   Keyboard,
   Alert,
-  
+  Animated,
 } from "react-native";
-import { GestureHandlerRootView, Swipeable } from "react-native-gesture-handler";
-import { RectButton } from "react-native-gesture-handler";
+import { GestureHandlerRootView, Swipeable, RectButton } from "react-native-gesture-handler";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 
-type Item = {
-  id: string;
-  text: string;   // product name
-  qty: string;    // numeric input as string
-};
+type Item = { id: string; text: string; qty: string };
 
 export default function ListScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+
   const incoming: Item[] = useMemo(() => {
     try {
-      if (params.items) {
-        const parsed = JSON.parse(params.items as string) as { id: string; text: string; input?: string }[];
-        // Normalize to our shape: input -> qty
-        return (parsed || []).map((p) => ({
-          id: String(p.id ?? Date.now()),
-          text: String(p.text ?? "").trim(),
-          qty: String(p.input ?? ""),
-        }));
-      }
-      return [];
+      if (!params.items) return [];
+      const parsed = JSON.parse(params.items as string) as {
+        id: string;
+        text: string;
+        input?: string;
+      }[];
+      return (parsed || []).map((p) => ({
+        id: String(p.id ?? Date.now()),
+        text: String(p.text ?? "").trim(),
+        qty: String(p.input ?? ""),
+      }));
     } catch {
       return [];
     }
@@ -46,11 +43,11 @@ export default function ListScreen() {
 
   const [items, setItems] = useState<Item[]>([]);
   const inputRefs = useRef<Record<string, TextInput | null>>({});
-  const nameRefs  = useRef<Record<string, TextInput | null>>({});
+  const nameRefs = useRef<Record<string, TextInput | null>>({});
 
-  // Merge any incoming items from camera (de-dupe by text)
+  // Merge de-duped incoming items
   useEffect(() => {
-    if (incoming.length === 0) return;
+    if (!incoming.length) return;
     setItems((prev) => {
       const seen = new Set(prev.map((i) => i.text.toLowerCase()));
       const add = incoming.filter((i) => {
@@ -66,50 +63,36 @@ export default function ListScreen() {
   const addManual = () => {
     const id = String(Date.now());
     const newItem: Item = { id, text: "", qty: "" };
-    setItems((prev) => [newItem, ...prev]);
-    // Focus the new name field after a tick
-    setTimeout(() => {
-      nameRefs.current[id]?.focus();
-    }, 50);
+    setItems((p) => [newItem, ...p]);
+    setTimeout(() => nameRefs.current[id]?.focus(), 50);
   };
 
-  const deleteItem = (id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
-  };
+  const deleteItem = (id: string) => setItems((p) => p.filter((i) => i.id !== id));
+  const onChangeQty = (id: string, v: string) => /^\d*$/.test(v) && setItems((p) => p.map((i) => (i.id === id ? { ...i, qty: v } : i)));
+  const onChangeName = (id: string, v: string) => setItems((p) => p.map((i) => (i.id === id ? { ...i, text: v } : i)));
+  const copyName = async (t: string) => (t.trim() ? Clipboard.setStringAsync(t.trim()) : Alert.alert("Nothing to copy"));
 
-  const onChangeQty = (id: string, val: string) => {
-    if (!/^\d*$/.test(val)) return; // numeric only
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty: val } : i)));
+  // --- Right swipe action (new look) ---
+  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, id: string) => {
+    const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+    return (
+      <RectButton style={styles.deleteWrap} onPress={() => deleteItem(id)}>
+        <Animated.View style={[styles.deleteInner, { transform: [{ scale }] }]}>
+          <Ionicons name="trash-outline" size={26} color="#fff" />
+          <Text style={styles.deleteTxt}>Delete</Text>
+        </Animated.View>
+      </RectButton>
+    );
   };
-
-  const onChangeName = (id: string, val: string) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, text: val } : i)));
-  };
-
-  const copyName = async (text: string) => {
-    if (!text.trim()) {
-      Alert.alert("Nothing to copy", "This item has no name yet.");
-      return;
-    }
-    await Clipboard.setStringAsync(text.trim());
-  };
-
-  const renderRightActions = (id: string) => (
-    <RectButton style={styles.deleteBtn} onPress={() => deleteItem(id)}>
-      <Ionicons name="trash-outline" size={22} color="#fff" />
-      <Text style={styles.deleteTxt}>Delete</Text>
-    </RectButton>
-  );
 
   const renderItem = ({ item, index }: { item: Item; index: number }) => (
     <Swipeable
       overshootRight={false}
-      renderRightActions={() => renderRightActions(item.id)}
+      renderRightActions={(progress) => renderRightActions(progress, item.id)}
     >
       <View style={styles.rowCard}>
         <Text style={styles.indexTxt}>{index + 1}.</Text>
 
-        {/* Name (editable only when empty or when the user taps) */}
         <TextInput
           ref={(r) => (nameRefs.current[item.id] = r)}
           style={styles.nameBox}
@@ -117,13 +100,11 @@ export default function ListScreen() {
           placeholder="Product name"
           placeholderTextColor="#a0a0a0"
           onChangeText={(t) => onChangeName(item.id, t)}
-          // Keep it single-line like your design; truncate naturally
           numberOfLines={1}
           returnKeyType="done"
           onSubmitEditing={Keyboard.dismiss}
         />
 
-        {/* Qty box */}
         <TextInput
           ref={(r) => (inputRefs.current[item.id] = r)}
           style={styles.qty}
@@ -135,12 +116,7 @@ export default function ListScreen() {
           onChangeText={(t) => onChangeQty(item.id, t)}
         />
 
-        {/* Copy button */}
-        <TouchableOpacity
-          style={styles.copyBtn}
-          onPress={() => copyName(item.text)}
-          accessibilityLabel="Copy item name"
-        >
+        <TouchableOpacity style={styles.copyBtn} onPress={() => copyName(item.text)}>
           <Ionicons name="copy-outline" size={20} color="#6b7280" />
         </TouchableOpacity>
       </View>
@@ -165,9 +141,7 @@ export default function ListScreen() {
           renderItem={renderItem}
           contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 28 }}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-          ListEmptyComponent={
-            <Text style={styles.empty}>No items yet — scan or tap +</Text>
-          }
+          ListEmptyComponent={<Text style={styles.empty}>No items yet — scan or tap +</Text>}
           keyboardShouldPersistTaps="handled"
         />
       </View>
@@ -175,8 +149,7 @@ export default function ListScreen() {
   );
 }
 
-// Todo: saperate the style sheet at the end.
-// styleSheet
+/* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
 
@@ -199,7 +172,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 32,
     fontWeight: "800",
-    color: "#000000ff",
+    color: "#000",
     letterSpacing: 0.5,
   },
 
@@ -213,17 +186,11 @@ const styles = StyleSheet.create({
     height: 88,
     shadowColor: "#000",
     shadowOpacity: 0.08,
-    // shadowRadius: 18,
     shadowOffset: { width: 0, height: 2 },
   },
   indexTxt: { fontSize: 22, fontWeight: "800", color: "#0b0c10", marginRight: 12 },
 
-  nameBox: {
-    flex: 1,
-    fontSize: 20,
-    color: "#0f172a",
-    marginRight: 12,
-  },
+  nameBox: { flex: 1, fontSize: 20, color: "#0f172a", marginRight: 12 },
 
   qty: {
     width: 110,
@@ -245,23 +212,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  deleteBtn: {
-    width: 100,
+  // New iOS-like delete button (matches your 2nd screenshot)
+  deleteWrap: {
+    width: 116,
     marginVertical: 2,
-    // borderRadius: 18,
-    backgroundColor: "#ef4444",
+    backgroundColor: "#ff3b30", // iOS system red
     alignItems: "center",
     justifyContent: "center",
-    borderTopRightRadius:18,
-    borderBottomRightRadius:18
-    
+    borderTopRightRadius: 22,
+    borderBottomRightRadius: 22,
+    // a slight shadow so it feels elevated
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    marginLeft:-12
   },
-  deleteTxt: { color: "#fff", fontWeight: "700", marginTop: 4 },
+  deleteInner: { alignItems: "center", justifyContent: "center", gap: 6 },
+  deleteTxt: { color: "#fff", fontWeight: "700", fontSize: 14 },
 
-  empty: {
-    textAlign: "center",
-    color: "#8b8d93",
-    marginTop: 24,
-    fontSize: 16,
-  },
+  empty: { textAlign: "center", color: "#8b8d93", marginTop: 24, fontSize: 16 },
 });
+
+

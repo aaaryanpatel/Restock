@@ -37,9 +37,13 @@ export default function RootLayout() {
         {/* Your tab navigator lives inside (tabs) */}
         <Drawer.Screen name="(tabs)" options={{ drawerLabel: "Home" }} />
         <Drawer.Screen name="about" options={{ drawerLabel: "About" }} />
-        <Drawer.Screen name="privacy" options={{ drawerLabel: "Privacy" }} />
+        <Drawer.Screen name="privacy"  options={{ drawerLabel: "Privacy" }} />
+        
       </Drawer>
+      
       <StatusBar style="dark" />
     </SafeAreaProvider>
   );
 }
+
+
