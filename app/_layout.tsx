@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Drawer } from "expo-router/drawer";
-import SplashScreen from "./SplashScreen"; // adjust path if yours differs
+import SplashScreen from "./SplashScreen"; 
 
 export default function RootLayout() {
   const [showSplash, setShowSplash] = useState(true);

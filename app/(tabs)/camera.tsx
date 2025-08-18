@@ -6,9 +6,11 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 
+// Public Vision API key is read from env at build/runtime
 const VISION_KEY = process.env.EXPO_PUBLIC_VISION_KEY ?? "";
 
-// Optional cleaner – keep if you already use it
+// Pull a product-looking name out of raw OCR text.
+// Heuristics: drop money/units/UPC-ish lines, favor lines with more letters than digits.
 function extractProductName(raw: string) {
   const lines = (raw || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const BAD = ["retail price","unit price","per ounce","price","oz","ounce","g","kg","lb","ct","pk","barcode","upc"];
@@ -64,17 +66,19 @@ export default function CameraScreen() {
     if (isBusy || !cameraRef.current) return;
     try {
       setBusy(true);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // tap feedback
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // subtle haptic so the shutter feels responsive
 
-      // 1) Take photo quickly
+      // 1) Capture a quick photo
       const photo = await cameraRef.current.takePictureAsync({
         base64: false,
-        quality: 0.3,           // small & fast
+        quality: 0.01, // tiny file for speed; accuracy is improved later by resize
+                       // Note: quality should not be this much low 
+                       // TODO: look for better solution
         skipProcessing: true,
       });
 
-      // 2) Crop to the orange frame (relative → absolute)
-      // Frame is centered, width = 86%, height = 42% of image
+      // 2) Crop to the on-screen orange frame (convert relative box → absolute px)
+      //    The frame is centered: width 86% × height 42% of the captured image.
       const rw = 0.86, rh = 0.42, rx = (1 - rw) / 2, ry = (1 - rh) / 2;
       const width = photo.width ?? 0;
       const height = photo.height ?? 0;
@@ -86,23 +90,24 @@ export default function CameraScreen() {
         height:  Math.round(height * rh),
       };
 
-      // 3) Crop + resize + return base64 for OCR
+      // 3) Crop, downscale, and produce base64 for the OCR request
       const cropped = await ImageManipulator.manipulateAsync(
         photo.uri,
         [
           { crop },
-          { resize: { width: 1200 } }, // smaller upload, good accuracy
+          { resize: { width: 1200 } }, // smaller upload with good-enough detail
         ],
         { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
 
+      // Dev safety: if no API key configured, stop here with a friendly message.
       if (!VISION_KEY) {
         Alert.alert("Captured", "Add EXPO_PUBLIC_VISION_KEY to run OCR.");
         setBusy(false);
         return;
       }
 
-      // 4) OCR — TEXT_DETECTION is fastest
+      // 4) Send OCR request (TEXT_DETECTION is the fast path)
       const body = {
         requests: [{ image: { content: cropped.base64 }, features: [{ type: "TEXT_DETECTION" }] }],
       };
@@ -112,6 +117,7 @@ export default function CameraScreen() {
       );
       const data = await res.json();
 
+      // Prefer fullTextAnnotation; fall back to the first textAnnotation if needed.
       let parsed = data?.responses?.[0]?.fullTextAnnotation?.text
         ?? data?.responses?.[0]?.textAnnotations?.[0]?.description
         ?? "";
@@ -120,7 +126,7 @@ export default function CameraScreen() {
 
       if (nameOnly) {
         setItems(prev => [...prev, { id: Date.now().toString(), text: nameOnly, input: "" }]);
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // done buzz
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // success haptic
       } else {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("No text found", "Try aligning the name inside the frame.");
@@ -130,13 +136,13 @@ export default function CameraScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert("Error", "Could not capture/recognize.");
     } finally {
-      setBusy(false);
+      setBusy(false); // always release the busy flag
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* Camera background */}
+      {/* Live camera preview as the background */}
       <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
@@ -144,12 +150,12 @@ export default function CameraScreen() {
         isActive
       />
 
-      {/* Dim + scan frame */}
+      {/* Dimmed overlay with the orange scan frame */}
       <View pointerEvents="none" style={styles.overlay}>
         <View style={styles.frame} />
       </View>
 
-      {/* Header */}
+      {/* Top bar */}
       <View style={styles.header}>
         <Text style={styles.title}>Restock</Text>
         <TouchableOpacity onPress={() => router.push("/about")} style={styles.circleBtn}>
@@ -157,7 +163,7 @@ export default function CameraScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Bottom controls */}
+      {/* Bottom controls: open list + shutter */}
       <View style={styles.bottom}>
         <TouchableOpacity
           style={styles.secondaryBtn}
@@ -175,9 +181,8 @@ export default function CameraScreen() {
   );
 }
 
-/* ---------------- styles ---------------- */
-// Todo: saperate the style sheet at the end.
-/* ---------------- styles ---------------- */
+/* ---------------- Styles ---------------- */
+// TODO: move the styles into a separate file later.
 
 const ORANGE = "#ff7a00";
 

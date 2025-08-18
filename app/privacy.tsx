@@ -5,7 +5,7 @@ import { View, Text, StyleSheet, ScrollView,Linking,Alert,Pressable } from "reac
 
 export default function PrivacyScreen() {
     const handleEmailPress = () => {
-    Linking.openURL("mailto:restock.app.official@gmail.com").catch(() =>
+    Linking.openURL("mailto:restock.app.official175@gmail.com").catch(() =>
       Alert.alert("Error", "Could not open your mail app.")
     );
   };

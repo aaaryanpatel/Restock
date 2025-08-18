@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
@@ -23,6 +22,8 @@ export default function ListScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
 
+  // Parse any items passed via route params (from the camera screen).
+  // Keep it defensive so a bad payload just results in an empty list.
   const incoming: Item[] = useMemo(() => {
     try {
       if (!params.items) return [];
@@ -45,7 +46,7 @@ export default function ListScreen() {
   const inputRefs = useRef<Record<string, TextInput | null>>({});
   const nameRefs = useRef<Record<string, TextInput | null>>({});
 
-  // Merge de-duped incoming items
+  // Merge new items into state while de-duping by lowercased text.
   useEffect(() => {
     if (!incoming.length) return;
     setItems((prev) => {
@@ -60,6 +61,7 @@ export default function ListScreen() {
     });
   }, [incoming]);
 
+  // Insert a blank row at the top and focus its name field.
   const addManual = () => {
     const id = String(Date.now());
     const newItem: Item = { id, text: "", qty: "" };
@@ -72,7 +74,7 @@ export default function ListScreen() {
   const onChangeName = (id: string, v: string) => setItems((p) => p.map((i) => (i.id === id ? { ...i, text: v } : i)));
   const copyName = async (t: string) => (t.trim() ? Clipboard.setStringAsync(t.trim()) : Alert.alert("Nothing to copy"));
 
-  // --- Right swipe action (new look) ---
+  // Right-swipe action: animated "Delete" button that feels native on iOS.
   const renderRightActions = (progress: Animated.AnimatedInterpolation<number>, id: string) => {
     const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
     return (
@@ -85,6 +87,7 @@ export default function ListScreen() {
     );
   };
 
+  // Single row renderer: index number, editable name, qty field, and quick copy button.
   const renderItem = ({ item, index }: { item: Item; index: number }) => (
     <Swipeable
       overshootRight={false}
@@ -126,7 +129,7 @@ export default function ListScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-        {/* Header */}
+        {/* Top bar: add item, title, spacer for symmetry */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.plusWrap} onPress={addManual}>
             <Ionicons name="add" size={20} color="#2b6be6" />
@@ -149,7 +152,7 @@ export default function ListScreen() {
   );
 }
 
-/* ---------------- styles ---------------- */
+/* ---------------- Styles ---------------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
 
@@ -212,7 +215,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  // New iOS-like delete button (matches your 2nd screenshot)
+  // iOS-style swipe-to-delete: rounded red pill with a little elevation.
   deleteWrap: {
     width: 116,
     marginVertical: 2,
@@ -221,7 +224,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderTopRightRadius: 22,
     borderBottomRightRadius: 22,
-    // a slight shadow so it feels elevated
+    // slight shadow for depth
     shadowColor: "#000",
     shadowOpacity: 0.18,
     shadowRadius: 8,
@@ -233,5 +236,3 @@ const styles = StyleSheet.create({
 
   empty: { textAlign: "center", color: "#8b8d93", marginTop: 24, fontSize: 16 },
 });
-
-
